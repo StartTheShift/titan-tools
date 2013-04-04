@@ -87,45 +87,7 @@ public abstract class IndexRepairTest extends GraphTest {
 
         //look through the indexed keys
         g = new TitanGraphTools((StandardTitanGraph) graphdb);
-        itx = (InternalTitanTransaction) graphdb.newTransaction();
-        stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
-        indexStore = g.getBackend().getVertexIndexStore();
-        RecordIterator<ByteBuffer> keys = indexStore.getKeys(stx);
-        while (keys.hasNext()) {
-            ByteBuffer key = keys.next();
-            List<ByteBuffer> deletions = new ArrayList<ByteBuffer>();
-            ByteBuffer startCol = VariableLong.positiveByteBuffer(id.getID());
-            List<Entry> columns = indexStore.getSlice(
-                    key,
-                    startCol,
-                    ByteBufferUtil.nextBiggerBuffer(startCol),
-                    stx
-            );
-            for (Entry entry : columns) {
-                int x = 0;
-                long eid = VariableLong.readPositive(entry.getValue());
-                TitanVertex v = (TitanVertex) graphdb.getVertex(eid);
-                if (v == null) {
-                    deletions.add(entry.getColumn());
-                    System.out.println("deleted vertex found in index");
-                } else {
-                    //verify that the given property matches
-                    Object value = v.getProperty(id);
-                    ByteBuffer indexKey = g.getIndexKey(value);
-                    if (!Arrays.equals(key.array(), indexKey.array())) {
-                        deletions.add(entry.getColumn());
-                        System.out.println("value mismatch found in index");
-                    }
-                }
-            }
-
-            if (deletions.size() > 0) {
-                indexStore.mutate(key, null, deletions, stx);
-            }
-        }
-
-        //cleanup
-        itx.commit();
+        g.repairType(id);
 
         clopen();
         itx = (InternalTitanTransaction) graphdb.newTransaction();
