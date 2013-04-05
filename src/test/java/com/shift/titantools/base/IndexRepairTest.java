@@ -47,9 +47,9 @@ public abstract class IndexRepairTest extends GraphTest {
             properties[i] = p;
         }
 
-        TitanGraphTools g = new TitanGraphTools((StandardTitanGraph) graphdb);
+        TitanGraphTools fx = new TitanGraphTools((StandardTitanGraph) graphdb);
 
-        KeyColumnValueStore indexStore = g.getBackend().getVertexIndexStore();
+        KeyColumnValueStore indexStore = fx.getBackend().getVertexIndexStore();
 
         InternalTitanTransaction itx = (InternalTitanTransaction) graphdb.newTransaction();
         StoreTransaction stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
@@ -58,12 +58,12 @@ public abstract class IndexRepairTest extends GraphTest {
         long fakeVertexId = 5678;
         indexStore.mutate(
                 //the attribute is the key
-                g.getIndexKey(fakeId),
+                fx.getIndexKey(fakeId),
 
                 //key additions
                 //the column->value is the id property mapped to the vertex id
                 Lists.newArrayList(
-                        new Entry(g.getKeyedIndexColumn(id), VariableLong.positiveByteBuffer(fakeVertexId))
+                        new Entry(fx.getKeyedIndexColumn(id), VariableLong.positiveByteBuffer(fakeVertexId))
                 ),
 
                 //no deletions
@@ -82,18 +82,18 @@ public abstract class IndexRepairTest extends GraphTest {
         itx = (InternalTitanTransaction) graphdb.newTransaction();
         long[] matches = ((StandardTitanGraph) graphdb).indexRetrieval(fakeId, id, itx);
 
-        Assert.assertEquals(matches.length, 1);
-        Assert.assertEquals(matches[0], fakeVertexId);
+        Assert.assertEquals(1, matches.length);
+        Assert.assertEquals(fakeVertexId, matches[0]);
 
         //look through the indexed keys
-        g = new TitanGraphTools((StandardTitanGraph) graphdb);
-        g.repairType(id);
+        fx = new TitanGraphTools((StandardTitanGraph) graphdb);
+        fx.repairType(id);
 
         clopen();
         itx = (InternalTitanTransaction) graphdb.newTransaction();
         matches = ((StandardTitanGraph) graphdb).indexRetrieval(fakeId, id, itx);
 
-        Assert.assertEquals(matches.length, 0);
+        Assert.assertEquals(0, matches.length);
     }
 
     /**
@@ -108,6 +108,84 @@ public abstract class IndexRepairTest extends GraphTest {
     @Test
     public void testIncorrectIndexedValueRepair() throws Exception {
 
+
+    }
+
+    /**
+     * Tests that the reindex operation fills in any missing data
+     *
+     * @throws Exception
+     */
+    @Test
+    public void testReindexAddsMissingEntries() throws Exception {
+        TitanKey name = makeType("name", String.class, true, false);
+        tx.commit();
+
+        int numVertices = 10;
+        tx = graphdb.newTransaction();
+        TitanVertex[] vertices = new TitanVertex[numVertices];
+        TitanProperty[] properties = new TitanProperty[numVertices];
+        for (int i=0; i<numVertices; i++) {
+            TitanVertex v = tx.addVertex();
+            TitanProperty p = v.addProperty("name", "name-" + (i%2));
+            vertices[i] = v;
+            properties[i] = p;
+            System.out.println(v.getID());
+        }
+        clopen();
+
+        //first, check that the expected number of results are returned from the index
+        InternalTitanTransaction itx;
+        StoreTransaction stx;
+
+        String corruptName = "name-0";
+
+        itx = (InternalTitanTransaction) graphdb.newTransaction();
+        stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
+
+        long[] matches;
+        matches = ((StandardTitanGraph) graphdb).indexRetrieval(corruptName, name, itx);
+        Assert.assertEquals(matches.length, 5);
+
+        TitanGraphTools fx = new TitanGraphTools((StandardTitanGraph) graphdb);
+
+        //get the index columns to delete
+        ByteBuffer key = fx.getIndexKey(corruptName);
+        ArrayList<ByteBuffer> removeColumns = new ArrayList<ByteBuffer>();
+
+        KeyColumnValueStore indexStore = fx.getBackend().getVertexIndexStore();
+        ByteBuffer startCol = VariableLong.positiveByteBuffer(name.getID());
+        List<Entry> columns = indexStore.getSlice(
+                key,
+                startCol,
+                ByteBufferUtil.nextBiggerBuffer(startCol),
+                stx
+        );
+
+        for (Entry entry: columns) {
+            removeColumns.add(entry.getColumn());
+        }
+
+        //delete the columns
+        indexStore.mutate(key, null, removeColumns, stx);
+        itx.commit();
+
+        clopen();
+
+        //now, check that nothing is returned when querying the index
+        itx = (InternalTitanTransaction) graphdb.newTransaction();
+        matches = ((StandardTitanGraph) graphdb).indexRetrieval(corruptName, name, itx);
+        Assert.assertEquals(0, matches.length);
+
+        //reindex
+        fx.reindexType(name);
+
+        clopen();
+
+        //check that the vertices are back
+        itx = (InternalTitanTransaction) graphdb.newTransaction();
+        matches = ((StandardTitanGraph) graphdb).indexRetrieval(corruptName, name, itx);
+        Assert.assertEquals(5, matches.length);
 
     }
 }
