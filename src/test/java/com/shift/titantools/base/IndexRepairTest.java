@@ -12,6 +12,7 @@ import com.thinkaurelius.titan.diskstorage.util.ByteBufferUtil;
 import com.thinkaurelius.titan.graphdb.database.StandardTitanGraph;
 import com.thinkaurelius.titan.graphdb.database.idhandling.VariableLong;
 import com.thinkaurelius.titan.graphdb.transaction.InternalTitanTransaction;
+import com.tinkerpop.blueprints.Vertex;
 import junit.framework.Assert;
 import org.apache.commons.configuration.Configuration;
 
@@ -107,7 +108,94 @@ public abstract class IndexRepairTest extends GraphTest {
      */
     @Test
     public void testIncorrectIndexedValueRepair() throws Exception {
+        TitanKey name = makeType("name", String.class, true, false);
+        tx.commit();
 
+        int numVertices = 10;
+        tx = graphdb.newTransaction();
+        TitanVertex[] vertices = new TitanVertex[numVertices];
+        TitanProperty[] properties = new TitanProperty[numVertices];
+        for (int i=0; i<numVertices; i++) {
+            TitanVertex v = tx.addVertex();
+            TitanProperty p = v.addProperty("name", "name-" + i);
+            vertices[i] = v;
+            properties[i] = p;
+        }
+        clopen();
+
+        InternalTitanTransaction itx;
+        StoreTransaction stx;
+
+        String realName = "name-0";
+        String fakeName = "name-1000";
+
+        itx = (InternalTitanTransaction) graphdb.newTransaction();
+        stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
+
+        long[] matches;
+        matches = ((StandardTitanGraph) graphdb).indexRetrieval(realName, name, itx);
+        Assert.assertEquals(1, matches.length);
+
+        clopen();
+
+        //corrupt index
+        TitanGraphTools fx = new TitanGraphTools((StandardTitanGraph) graphdb);
+
+        KeyColumnValueStore indexStore = fx.getBackend().getVertexIndexStore();
+
+        itx = (InternalTitanTransaction) graphdb.newTransaction();
+        stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
+
+        ByteBuffer startColumn = VariableLong.positiveByteBuffer(name.getID());
+        List<Entry> entries = indexStore.getSlice(
+                fx.getIndexKey(realName),
+                startColumn,
+                ByteBufferUtil.nextBiggerBuffer(startColumn),
+                stx
+        );
+
+        //make a fake index entry
+        indexStore.mutate(fx.getIndexKey(fakeName), entries, null, stx);
+
+        //delete the real index entry
+        List<ByteBuffer> toDelete = new ArrayList<ByteBuffer>(entries.size());
+        for (Entry entry: entries) toDelete.add(entry.getColumn());
+        indexStore.mutate(fx.getIndexKey(realName), null, toDelete, stx);
+        itx.commit();
+
+        clopen();
+
+        itx = (InternalTitanTransaction) graphdb.newTransaction();
+        stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
+
+
+        //check that the index is busted
+        matches = ((StandardTitanGraph) graphdb).indexRetrieval(fakeName, name, itx);
+        Assert.assertEquals(1, matches.length);
+
+        matches = ((StandardTitanGraph) graphdb).indexRetrieval(realName, name, itx);
+        Assert.assertEquals(0, matches.length);
+
+        clopen();
+
+        itx = (InternalTitanTransaction) graphdb.newTransaction();
+        stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
+        fx = new TitanGraphTools((StandardTitanGraph) graphdb);
+        fx.repairType("name");
+
+        clopen();
+
+        //check that the index is repaird
+        itx = (InternalTitanTransaction) graphdb.newTransaction();
+        stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
+
+
+        //check that the index is busted
+        matches = ((StandardTitanGraph) graphdb).indexRetrieval(fakeName, name, itx);
+        Assert.assertEquals(0, matches.length);
+
+        matches = ((StandardTitanGraph) graphdb).indexRetrieval(realName, name, itx);
+        Assert.assertEquals(1, matches.length);
 
     }
 
