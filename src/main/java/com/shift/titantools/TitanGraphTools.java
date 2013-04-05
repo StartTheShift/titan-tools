@@ -327,6 +327,11 @@ public class TitanGraphTools {
         itx.commit();
     }
 
+    public void reindexType(String typeName) throws RepairException {
+        TitanType type = graph.getType(typeName);
+        reindexType(type);
+    }
+
     public void repairType(TitanType type) throws RepairException {
         processStaleIndexEntries(type, true);
     }
