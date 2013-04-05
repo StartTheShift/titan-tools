@@ -7,7 +7,7 @@ import org.apache.commons.configuration.Configuration;
 import static com.thinkaurelius.titan.graphdb.configuration.GraphDatabaseConfiguration.*;
 import static com.thinkaurelius.titan.diskstorage.cassandra.embedded.CassandraEmbeddedStoreManager.*;
 
-public class CassandraIndexRepairTest extends IndexRepairTest {
+public class CassandraEmbeddedIndexRepairTest extends IndexRepairTest {
 
     public static Configuration getConfig() {
         Configuration config = new BaseConfiguration();
@@ -19,7 +19,7 @@ public class CassandraIndexRepairTest extends IndexRepairTest {
         return config;
     }
 
-    public CassandraIndexRepairTest() {
+    public CassandraEmbeddedIndexRepairTest() {
         super(getConfig());
     }
 }
