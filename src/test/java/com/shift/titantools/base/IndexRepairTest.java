@@ -145,7 +145,7 @@ public abstract class IndexRepairTest extends GraphTest {
 
         long[] matches;
         matches = ((StandardTitanGraph) graphdb).indexRetrieval(corruptName, name, itx);
-        Assert.assertEquals(matches.length, 5);
+        Assert.assertEquals(5, matches.length);
 
         TitanGraphTools fx = new TitanGraphTools((StandardTitanGraph) graphdb);
 
