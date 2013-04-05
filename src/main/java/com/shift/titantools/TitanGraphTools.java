@@ -307,7 +307,7 @@ public class TitanGraphTools {
         Backend backend = getBackend();
         KeyColumnValueStore edgeStore = backend.getEdgeStore();
 
-
+        int count = 0;
         try {
             BackendMutator mutator = new BackendMutator(backend, itx.getTxHandle());
             RecordIterator<ByteBuffer> keys = edgeStore.getKeys(stx);
@@ -318,13 +318,15 @@ public class TitanGraphTools {
                 Iterator<TitanProperty> properties = v.getProperties(titanKey).iterator();
                 while (properties.hasNext()) {
                     addIndexEntry(properties.next(), mutator);
+                    count++;
                 }
             }
         } catch (StorageException e) {
             throw new RepairException(e);
         }
-
         itx.commit();
+
+        System.out.println(count + " properties reindexed on type: [" + type.getName() + "]");
     }
 
     public void reindexType(String typeName) throws RepairException {
