@@ -236,7 +236,8 @@ public class TitanGraphTools {
             throw new RepairException("the given key is not an index");
         }
 
-        KeyColumnValueStore indexStore = getBackend().getVertexIndexStore();
+        Backend backend = getBackend();
+        KeyColumnValueStore indexStore = backend.getVertexIndexStore();
         try {
 
             //we need to iterate over all keys in the index
@@ -244,6 +245,8 @@ public class TitanGraphTools {
             while (keys.hasNext()) {
                 ByteBuffer key = keys.next();
                 List<ByteBuffer> deletions = new ArrayList<ByteBuffer>();
+                List<TitanProperty> additions = new ArrayList<TitanProperty>();
+
                 ByteBuffer startCol = VariableLong.positiveByteBuffer(titanKey.getID());
                 List<Entry> columns = indexStore.getSlice(
                         key,
@@ -259,17 +262,29 @@ public class TitanGraphTools {
                         System.out.println("deleted vertex found in index");
                     } else {
                         //verify that the given property matches
-                        Object value = v.getProperty(titanKey.getName());
+                        Iterator<TitanProperty> properties = v.getProperties(titanKey.getName()).iterator();
+                        assert properties.hasNext();
+                        TitanProperty property = properties.next();
+                        assert !properties.hasNext();
+                        Object value = property.getAttribute();
                         ByteBuffer indexKey = getIndexKey(value);
                         if (!Arrays.equals(key.array(), indexKey.array())) {
                             deletions.add(entry.getColumn());
+                            additions.add(property);
                             System.out.println("value mismatch found in index");
                         }
                     }
                 }
 
-                if (deletions.size() > 0) {
-                    indexStore.mutate(key, null, deletions, stx);
+                if (repair) {
+                    BackendMutator mutator = new BackendMutator(backend, itx.getTxHandle());
+                    if (deletions.size() > 0) {
+                        indexStore.mutate(key, null, deletions, stx);
+                    }
+
+                    for (TitanProperty property: additions) {
+                        addIndexEntry(property, mutator);
+                    }
                 }
             }
         } catch (StorageException e) {
