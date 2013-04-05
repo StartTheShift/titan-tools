@@ -130,7 +130,6 @@ public abstract class IndexRepairTest extends GraphTest {
             TitanProperty p = v.addProperty("name", "name-" + (i%2));
             vertices[i] = v;
             properties[i] = p;
-            System.out.println(v.getID());
         }
         clopen();
 
