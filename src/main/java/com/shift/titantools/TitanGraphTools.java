@@ -277,13 +277,16 @@ public class TitanGraphTools {
                 }
 
                 if (repair) {
-                    BackendMutator mutator = new BackendMutator(backend, itx.getTxHandle());
-                    if (deletions.size() > 0) {
-                        indexStore.mutate(key, null, deletions, stx);
-                    }
-
-                    for (TitanProperty property: additions) {
-                        addIndexEntry(property, mutator);
+                    InternalTitanTransaction tx = (InternalTitanTransaction) graph.newTransaction();
+                    if (deletions.size() > 0 || additions.size() > 0) {
+                        BackendMutator mutator = new BackendMutator(backend, tx.getTxHandle());
+                        if (deletions.size() > 0) {
+                            indexStore.mutate(key, null, deletions, stx);
+                        }
+                        for (TitanProperty property: additions) {
+                            addIndexEntry(property, mutator);
+                        }
+                        tx.commit();
                     }
                 }
             }
@@ -324,18 +327,20 @@ public class TitanGraphTools {
 
         int count = 0;
         try {
-            BackendMutator mutator = new BackendMutator(backend, itx.getTxHandle());
+            InternalTitanTransaction tx = (InternalTitanTransaction) graph.newTransaction();
+            BackendMutator mutator = new BackendMutator(backend, tx.getTxHandle());
             RecordIterator<ByteBuffer> keys = edgeStore.getKeys(stx);
             while (keys.hasNext()) {
                 ByteBuffer key = keys.next();
                 long eid = IDHandler.getKeyID(key);
-                TitanVertex v = itx.getVertex(eid);
-                Iterator<TitanProperty> properties = v.getProperties(titanKey).iterator();
+                TitanVertex v = tx.getVertex(eid);
+                Iterator<TitanProperty> properties = v.getProperties(titanKey.getName()).iterator();
                 while (properties.hasNext()) {
                     addIndexEntry(properties.next(), mutator);
                     count++;
                 }
             }
+            tx.commit();
         } catch (StorageException e) {
             throw new RepairException(e);
         }
