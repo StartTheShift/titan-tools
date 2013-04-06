@@ -206,6 +206,13 @@ public class TitanGraphTools {
         }
     }
 
+    private static byte[] getByteArray(ByteBuffer buffer) {
+        int offset = buffer.arrayOffset();
+        byte[] bytes = new byte[buffer.remaining() - offset];
+        System.arraycopy(buffer.array(), offset, bytes, offset, bytes.length);
+        return bytes;
+    }
+
     /**
      * Searches for index entries that no longer reflect the state of their referenced vertices,
      * optionally removing the stale data
@@ -240,6 +247,8 @@ public class TitanGraphTools {
             RecordIterator<ByteBuffer> keys = indexStore.getKeys(stx);
             while (keys.hasNext()) {
                 ByteBuffer key = keys.next();
+                byte[] keyArray = getByteArray(key);
+
                 List<ByteBuffer> deletions = new ArrayList<ByteBuffer>();
                 List<TitanProperty> additions = new ArrayList<TitanProperty>();
 
@@ -264,7 +273,8 @@ public class TitanGraphTools {
                         assert !properties.hasNext();
                         Object value = property.getAttribute();
                         ByteBuffer indexKey = getIndexKey(value);
-                        if (!Arrays.equals(key.array(), indexKey.array())) {
+                        byte[] valueArray = getByteArray(indexKey);
+                        if (!Arrays.equals(keyArray, valueArray)) {
                             deletions.add(entry.getColumn());
                             additions.add(property);
                             System.out.println("value mismatch found in index");

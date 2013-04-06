@@ -182,6 +182,7 @@ public abstract class IndexRepairTest extends GraphTest {
         stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
         fx = new TitanGraphTools((StandardTitanGraph) graphdb);
         fx.repairType("name");
+        itx.commit();
 
         clopen();
 
