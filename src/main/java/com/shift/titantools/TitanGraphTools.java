@@ -214,15 +214,24 @@ public class TitanGraphTools {
     }
 
     /**
-     * Searches for index entries that no longer reflect the state of their referenced vertices,
-     * optionally removing the stale data
+     * Repairs the index associated with the given type. Note that this
+     * method only takes action if it detects an index entry that points
+     * to a vertex that either doesn't exist, or whose value for the given
+     * type doesn't match the index value pointing to it. It does not
+     * perform an exhaustive examination of all vertices to check that
+     * they are properly indexed, run reindexType to reindex every occurrence
+     * of a property.
      *
-     * @param type
-     * @param repair
+     * When an incorrect index entry is found, the erroneous index entry is
+     * deleted. If the vertex still exists, * and still contains that the
+     * property, the index is updated with the correct property.
+     *
+     * @param type: the type to examine
+     * @param repair: inconsistencies are repaired if this is set to true
      * @return
      * @throws RepairException
      */
-    protected int processStaleIndexEntries(TitanType type, boolean repair) throws RepairException {
+    protected void processStaleIndexEntries(TitanType type, boolean repair) throws RepairException {
 
         if (!type.isPropertyKey()) {
             throw new RepairException("the given type is not a property key");
@@ -241,6 +250,10 @@ public class TitanGraphTools {
 
         Backend backend = getBackend();
         KeyColumnValueStore indexStore = backend.getVertexIndexStore();
+
+        int keyCount = 0;
+        int deletedVertexCount = 0;
+        int repairedPropertyCount = 0;
         try {
 
             //we need to iterate over all keys in the index
@@ -265,6 +278,7 @@ public class TitanGraphTools {
                     if (v == null) {
                         deletions.add(entry.getColumn());
                         System.out.println("deleted vertex found in index");
+                        deletedVertexCount++;
                     } else {
                         //verify that the given property matches
                         Iterator<TitanProperty> properties = v.getProperties(titanKey.getName()).iterator();
@@ -279,6 +293,7 @@ public class TitanGraphTools {
                             additions.add(property);
                             System.out.println("value mismatch found in index");
                         }
+                        repairedPropertyCount++;
                     }
                 }
 
@@ -295,6 +310,7 @@ public class TitanGraphTools {
                         tx.commit();
                     }
                 }
+                keyCount++;
             }
         } catch (StorageException e) {
             throw new RepairException(e);
@@ -303,11 +319,85 @@ public class TitanGraphTools {
             itx.commit();
         }
 
-        return 0;
+        System.out.println("[" + type.getName() + "] repair completed");
+        System.out.println("  > " + keyCount + " keys examined");
+        System.out.println("  > " + deletedVertexCount + " references to deleted vertices " + (repair?"removed":"detected"));
+        System.out.println("  > " + repairedPropertyCount + " incorrectly indexed vertex properties " + (repair?"repaired":"detected"));
+    }
+
+    /**
+     * Repairs the index associated with the given type. Note that this
+     * method only takes action if it detects an index entry that points
+     * to a vertex that either doesn't exist, or whose value for the given
+     * type doesn't match the index value pointing to it. It does not
+     * perform an exhaustive examination of all vertices to check that
+     * they are properly indexed, run reindexType to reindex every occurrence
+     * of a property.
+     *
+     * When an incorrect index entry is found, the erroneous index entry is
+     * deleted. If the vertex still exists, * and still contains that the
+     * property, the index is updated with the correct property.
+     *
+     * @param type
+     * @throws RepairException
+     */
+    public void repairType(TitanType type) throws RepairException {
+        processStaleIndexEntries(type, true);
+    }
+
+    /**
+     * Repairs the index associated with the given type. Note that this
+     * method only takes action if it detects an index entry that points
+     * to a vertex that either doesn't exist, or whose value for the given
+     * type doesn't match the index value pointing to it. It does not
+     * perform an exhaustive examination of all vertices to check that
+     * they are properly indexed, run reindexType to reindex every occurrence
+     * of a property.
+     *
+     * When an incorrect index entry is found, the erroneous index entry is
+     * deleted. If the vertex still exists, * and still contains that the
+     * property, the index is updated with the correct property.
+     *
+     * @param typeName
+     * @throws RepairException
+     */
+    public void repairType(String typeName) throws RepairException {
+        TitanType type = graph.getType(typeName);
+        if (type == null) {
+            throw new RepairException("the type [" + typeName + "] wasn't found");
+        }
+        repairType(type);
+    }
+
+    /**
+     * Detects problems with the index associated with the given type.
+     *
+     * @param type
+     * @throws RepairException
+     */
+    public void checkType(TitanType type) throws RepairException {
+        processStaleIndexEntries(type, false);
+    }
+
+
+    /**
+     * Detects problems with the index associated with the given type.
+     *
+     * @param typeName
+     * @throws RepairException
+     */
+    public void checkType(String typeName) throws RepairException {
+        TitanType type = graph.getType(typeName);
+        if (type == null) {
+            throw new RepairException("the type [" + typeName + "] wasn't found");
+        }
+        checkType(type);
     }
 
     /**
      * Iterates through all vertices and updates the index with the current values
+     *
+     * This will not detect incorrect entries in the index
      *
      * @param type
      */
@@ -355,35 +445,18 @@ public class TitanGraphTools {
         System.out.println(count + " properties reindexed on type: [" + type.getName() + "]");
     }
 
+    /**
+     * Iterates through all vertices and updates the index with the current values
+     *
+     * This will not detect incorrect entries in the index
+     *
+     * @param typeName
+     */
     public void reindexType(String typeName) throws RepairException {
         TitanType type = graph.getType(typeName);
         if (type == null) {
             throw new RepairException("the type [" + typeName + "] wasn't found");
         }
         reindexType(type);
-    }
-
-    public void repairType(TitanType type) throws RepairException {
-        processStaleIndexEntries(type, true);
-    }
-
-    public void repairType(String typeName) throws RepairException {
-        TitanType type = graph.getType(typeName);
-        if (type == null) {
-            throw new RepairException("the type [" + typeName + "] wasn't found");
-        }
-        repairType(type);
-    }
-
-    public void checkType(TitanType type) throws RepairException {
-        processStaleIndexEntries(type, false);
-    }
-
-    public void checkType(String typeName) throws RepairException {
-        TitanType type = graph.getType(typeName);
-        if (type == null) {
-            throw new RepairException("the type [" + typeName + "] wasn't found");
-        }
-        checkType(type);
     }
 }
