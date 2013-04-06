@@ -266,6 +266,7 @@ public abstract class IndexRepairTest extends GraphTest {
         Assert.assertEquals(0, matches.length);
 
         //reindex
+        fx = new TitanGraphTools((StandardTitanGraph) graphdb);
         fx.reindexType(name);
 
         clopen();
