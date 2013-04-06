@@ -1,9 +1,6 @@
 package com.shift.titantools;
 
-import com.thinkaurelius.titan.core.TitanKey;
-import com.thinkaurelius.titan.core.TitanProperty;
-import com.thinkaurelius.titan.core.TitanType;
-import com.thinkaurelius.titan.core.TitanVertex;
+import com.thinkaurelius.titan.core.*;
 import com.thinkaurelius.titan.diskstorage.Backend;
 import com.thinkaurelius.titan.diskstorage.BackendTransaction;
 import com.thinkaurelius.titan.diskstorage.StorageException;
@@ -211,6 +208,15 @@ public class TitanGraphTools {
         byte[] bytes = new byte[buffer.remaining() - offset];
         System.arraycopy(buffer.array(), offset, bytes, offset, bytes.length);
         return bytes;
+    }
+
+    public void makeType(String name, Class<?> type, Boolean indexed, Boolean unique) {
+        TitanTransaction tx = graph.newTransaction();
+        TypeMaker t = tx.makeType().name(name).simple().functional();
+        if (unique) t = t.unique();
+        if (indexed) t = t.indexed();
+        t.dataType(type).group(TypeGroup.DEFAULT_GROUP).makePropertyKey();
+        tx.commit();
     }
 
     /**
