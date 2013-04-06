@@ -298,8 +298,8 @@ public class TitanGraphTools {
                             deletions.add(entry.getColumn());
                             additions.add(property);
                             System.out.println("value mismatch found in index");
+                            repairedPropertyCount++;
                         }
-                        repairedPropertyCount++;
                     }
                 }
 
