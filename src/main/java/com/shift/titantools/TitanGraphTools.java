@@ -224,7 +224,7 @@ public class TitanGraphTools {
      */
     protected int processStaleIndexEntries(TitanType type, boolean repair) throws RepairException {
 
-        if (type == null || !type.isPropertyKey()) {
+        if (!type.isPropertyKey()) {
             throw new RepairException("the given type is not a property key");
         }
 
@@ -357,6 +357,9 @@ public class TitanGraphTools {
 
     public void reindexType(String typeName) throws RepairException {
         TitanType type = graph.getType(typeName);
+        if (type == null) {
+            throw new RepairException("the type [" + typeName + "] wasn't found");
+        }
         reindexType(type);
     }
 
@@ -366,6 +369,9 @@ public class TitanGraphTools {
 
     public void repairType(String typeName) throws RepairException {
         TitanType type = graph.getType(typeName);
+        if (type == null) {
+            throw new RepairException("the type [" + typeName + "] wasn't found");
+        }
         repairType(type);
     }
 
@@ -375,6 +381,9 @@ public class TitanGraphTools {
 
     public void checkType(String typeName) throws RepairException {
         TitanType type = graph.getType(typeName);
+        if (type == null) {
+            throw new RepairException("the type [" + typeName + "] wasn't found");
+        }
         checkType(type);
     }
 }
