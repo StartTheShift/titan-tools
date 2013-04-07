@@ -1,4 +1,4 @@
-package com.shift.titantools.cassandra;
+package com.shift.titantools.cassandra.astynax;
 
 import com.shift.titantools.base.VertexRepairTest;
 import org.apache.commons.configuration.BaseConfiguration;
