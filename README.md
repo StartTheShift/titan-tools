@@ -21,7 +21,7 @@ titan-tools will:
 g = TitanGraphFactory.open('cassandra.properties')
 
 //second, instantiate a TitanGraphTools object
-fx = TitanGraphTools.create(g)
+fx = com.shift.titantools.TitanGraphTools.create(g)
 
 //find problems, but don't repair
 fx.checkType("type_name")
@@ -38,3 +38,12 @@ fx.checkVertices()
 //find and delete partially deleted vertices
 fx.cleanVertices()
 ```
+
+## Disclaimer
+
+Titan Tools is
+
+* a new project
+* has only been tested against Titan 0.2.1
+
+so test your repairs on a local copy of your graph first!
