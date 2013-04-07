@@ -49,6 +49,10 @@ public class TitanGraphTools {
         getPrivateMethods();
     }
 
+    public static TitanGraphTools create(StandardTitanGraph graph) throws RepairException {
+        return new TitanGraphTools(graph);
+    }
+
     /**
      * pulls out the private graph methods we need for index repair and testing, and makes them
      * publicly accessible
