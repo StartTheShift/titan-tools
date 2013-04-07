@@ -13,8 +13,11 @@ import com.thinkaurelius.titan.graphdb.database.BackendMutator;
 import com.thinkaurelius.titan.graphdb.database.StandardTitanGraph;
 import com.thinkaurelius.titan.graphdb.database.idhandling.IDHandler;
 import com.thinkaurelius.titan.graphdb.database.idhandling.VariableLong;
+import com.thinkaurelius.titan.graphdb.query.SimpleTitanQuery;
 import com.thinkaurelius.titan.graphdb.transaction.InternalTitanTransaction;
 import com.thinkaurelius.titan.graphdb.types.manager.TypeManager;
+import com.thinkaurelius.titan.graphdb.types.system.SystemKey;
+import com.thinkaurelius.titan.graphdb.vertices.InternalTitanVertex;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -237,7 +240,7 @@ public class TitanGraphTools {
      * @return
      * @throws RepairException
      */
-    protected void processStaleIndexEntries(TitanType type, boolean repair) throws RepairException {
+    protected void repairType(TitanType type, boolean repair) throws RepairException {
 
         if (!type.isPropertyKey()) {
             throw new RepairException("the given type is not a property key");
@@ -325,7 +328,7 @@ public class TitanGraphTools {
             itx.commit();
         }
 
-        System.out.println("[" + type.getName() + "] repair completed");
+        System.out.println("[" + type.getName() + "] " + (repair?"repair":"check") + " completed");
         System.out.println("  > " + keyCount + " keys examined");
         System.out.println("  > " + deletedVertexCount + " references to deleted vertices " + (repair?"removed":"detected"));
         System.out.println("  > " + repairedPropertyCount + " incorrectly indexed vertex properties " + (repair?"repaired":"detected"));
@@ -348,7 +351,7 @@ public class TitanGraphTools {
      * @throws RepairException
      */
     public void repairType(TitanType type) throws RepairException {
-        processStaleIndexEntries(type, true);
+        repairType(type, true);
     }
 
     /**
@@ -382,7 +385,7 @@ public class TitanGraphTools {
      * @throws RepairException
      */
     public void checkType(TitanType type) throws RepairException {
-        processStaleIndexEntries(type, false);
+        repairType(type, false);
     }
 
 
@@ -429,6 +432,7 @@ public class TitanGraphTools {
 
         int count = 0;
         try {
+            //@todo: fix this so the mutator and transaction are instantiated and committed once per fix
             InternalTitanTransaction tx = (InternalTitanTransaction) graph.newTransaction();
             BackendMutator mutator = new BackendMutator(backend, tx.getTxHandle());
             RecordIterator<ByteBuffer> keys = edgeStore.getKeys(stx);
@@ -464,5 +468,86 @@ public class TitanGraphTools {
             throw new RepairException("the type [" + typeName + "] wasn't found");
         }
         reindexType(type);
+    }
+
+    /**
+     * Works the same as v.getProperty(), but it will not exclude system properties
+     *
+     * @param v
+     * @param key
+     * @return
+     */
+    public static Object getSystemProperty(TitanVertex v, TitanKey key) {
+        Iterator<TitanProperty> iter = new SimpleTitanQuery((InternalTitanVertex) v)
+                .type(key).includeHidden().propertyIterator();
+
+        if (!iter.hasNext()) return null;
+        else {
+            Object value = iter.next().getAttribute();
+            if (iter.hasNext()) throw new QueryException("Multiple properties of specified type: " + key);
+            return value;
+        }
+
+    }
+
+    /**
+     * Iterates over all vertices in the graph and removes ones that
+     * are partially deleted
+     *
+     * @param repair
+     */
+    public void cleanVertices(boolean repair) throws RepairException {
+        //begin graph and store transactions
+        InternalTitanTransaction itx = (InternalTitanTransaction) graph.newTransaction();
+        StoreTransaction stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
+
+        //vertices are stored in the edge store
+        Backend backend = getBackend();
+        KeyColumnValueStore edgeStore = backend.getEdgeStore();
+
+        int keyCount = 0;
+        int fixCount = 0;
+        try {
+            InternalTitanTransaction readOnlyTx = (InternalTitanTransaction) graph.newTransaction();
+            RecordIterator<ByteBuffer> keys = edgeStore.getKeys(stx);
+            while (keys.hasNext()) {
+                ByteBuffer key = keys.next();
+                long eid = IDHandler.getKeyID(key);
+                TitanVertex v = readOnlyTx.getVertex(eid);
+
+                //don't mess with system stuff
+                if (v instanceof TitanKey) continue;
+                if (v instanceof TitanLabel) continue;
+                if (v instanceof TitanType) continue;
+
+                Object state = getSystemProperty(v, SystemKey.VertexState);
+
+                if (state == null) {
+                    if (repair) {
+                        InternalTitanTransaction tx = (InternalTitanTransaction) graph.newTransaction();
+                        tx.removeVertex(tx.getVertex(v.getID()));
+                        tx.commit();
+                    }
+                    fixCount++;
+                }
+                keyCount++;
+            }
+        } catch (StorageException e) {
+            throw new RepairException(e);
+        }
+        itx.commit();
+
+        System.out.println("partial vertex " + (repair?"repair":"check") + " completed");
+        System.out.println("  > " + keyCount + " keys examined");
+        System.out.println("  > " + fixCount + " partial vertices " + (repair?"removed":"detected"));
+
+    }
+
+    public void cleanVertices() throws RepairException {
+        cleanVertices(true);
+    }
+
+    public void checkVertices() throws RepairException {
+        cleanVertices(false);
     }
 }
