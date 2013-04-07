@@ -13,7 +13,7 @@ public class AstynaxIndexRepairTest extends IndexRepairTest {
         config.subset(STORAGE_NAMESPACE).addProperty(STORAGE_BACKEND_KEY, "cassandra");
         config.subset(STORAGE_NAMESPACE).addProperty(HOSTNAME_KEY, "127.0.0.1");
         config.subset(STORAGE_NAMESPACE).addProperty(KEYSPACE_KEY, "titantoolstest");
-        config.addProperty(AUTO_TYPE_KEY, "none");
+//        config.addProperty(AUTO_TYPE_KEY, "none");
         return config;
     }
 

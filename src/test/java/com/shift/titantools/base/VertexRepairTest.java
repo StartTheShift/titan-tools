@@ -44,7 +44,7 @@ public abstract class VertexRepairTest extends GraphTest {
         TitanVertex v1 = tx1.getVertex(v.getID());
 
         //check the vertex state
-        Object state = TitanGraphTools.getSystemProperty(v1, SystemKey.VertexState);
+        Object state = TitanGraphTools.getSystemPropertyValue(v1, SystemKey.VertexState);
         Assert.assertTrue(state != null);
 
         //load it in a second transaction

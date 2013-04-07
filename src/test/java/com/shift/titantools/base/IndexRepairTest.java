@@ -3,6 +3,7 @@ package com.shift.titantools.base;
 import com.google.common.collect.Lists;
 import com.shift.titantools.TitanGraphTools;
 import com.thinkaurelius.titan.core.*;
+import com.thinkaurelius.titan.diskstorage.Backend;
 import com.thinkaurelius.titan.diskstorage.BackendTransaction;
 import com.thinkaurelius.titan.diskstorage.keycolumnvalue.Entry;
 import com.thinkaurelius.titan.diskstorage.keycolumnvalue.KeyColumnValueStore;
@@ -10,13 +11,18 @@ import com.thinkaurelius.titan.diskstorage.keycolumnvalue.StoreTransaction;
 import com.thinkaurelius.titan.diskstorage.util.ByteBufferUtil;
 import com.thinkaurelius.titan.graphdb.database.StandardTitanGraph;
 import com.thinkaurelius.titan.graphdb.database.idhandling.VariableLong;
+import com.thinkaurelius.titan.graphdb.query.SimpleTitanQuery;
 import com.thinkaurelius.titan.graphdb.transaction.InternalTitanTransaction;
+import com.thinkaurelius.titan.graphdb.types.StandardPropertyKey;
+import com.thinkaurelius.titan.graphdb.types.system.SystemKey;
+import com.thinkaurelius.titan.graphdb.vertices.InternalTitanVertex;
 import junit.framework.Assert;
 import org.apache.commons.configuration.Configuration;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 public abstract class IndexRepairTest extends GraphTest {
@@ -273,4 +279,50 @@ public abstract class IndexRepairTest extends GraphTest {
         Assert.assertEquals(5, matches.length);
 
     }
+
+//    @Test
+//    public void testIndexCreationExperiment() throws Exception {
+//        TitanKey name = makeType("name", String.class, true, false);
+////        tx.commit();
+//
+//        //make some vertices with unindexed properties
+//        int numVertices = 10;
+//        TitanVertex[] vertices = new TitanVertex[numVertices];
+//        for (int i=0; i<numVertices; i++) {
+//            TitanVertex v = tx.addVertex();
+//            v.addProperty("name", "name-" + (i%2));
+//            v.addProperty("stuff", "name-" + (i%2));
+//            vertices[i] = v;
+//        }
+//        clopen();
+//
+//
+//        TitanGraphTools fx;
+//        TitanProperty property;
+//
+//        InternalTitanTransaction itx = (InternalTitanTransaction) graphdb.newTransaction();
+//        StoreTransaction stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
+//
+//        fx = TitanGraphTools.create((StandardTitanGraph) graphdb);
+//        Backend backend = fx.getBackend();
+//        TitanType type = tx.getType("stuff");
+////        StandardPropertyKey p = (StandardPropertyKey) TitanGraphTools
+////                .getSystemPropertyValue(type, SystemKey.PropertyTypeDefinition);
+//        property = TitanGraphTools.getSystemProperty(type, SystemKey.PropertyTypeDefinition);
+//        StandardPropertyKey propertyKey = (StandardPropertyKey) property.getAttribute();
+//        Iterator<TitanRelation> relations;
+//        relations = property.getRelations().iterator();
+//        relations = type.getRelations().iterator();
+//        propertyKey.hasIndex = true;
+////        type.addProperty(SystemKey.PropertyTypeDefinition, propertyKey);
+//
+//        Iterator<TitanProperty> iter = new SimpleTitanQuery((InternalTitanVertex) type)
+//                .includeHidden().propertyIterator();
+//        while (iter.hasNext()) {
+//            property = iter.next();
+//            System.out.println(property.toString() + " " + property.getAttribute());
+//        }
+//        int x = 1;
+//    }
 }
+

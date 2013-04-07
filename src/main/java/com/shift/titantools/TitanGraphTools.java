@@ -481,7 +481,7 @@ public class TitanGraphTools {
      * @param key
      * @return
      */
-    public static Object getSystemProperty(TitanVertex v, TitanKey key) {
+    public static Object getSystemPropertyValue(TitanVertex v, TitanKey key) {
         Iterator<TitanProperty> iter = new SimpleTitanQuery((InternalTitanVertex) v)
                 .type(key).includeHidden().propertyIterator();
 
@@ -492,6 +492,18 @@ public class TitanGraphTools {
             return value;
         }
 
+    }
+
+    public static TitanProperty getSystemProperty(TitanVertex v, TitanKey key) {
+        Iterator<TitanProperty> iter = new SimpleTitanQuery((InternalTitanVertex) v)
+                .type(key).includeHidden().propertyIterator();
+
+        if (!iter.hasNext()) return null;
+        else {
+            TitanProperty value = iter.next();
+            if (iter.hasNext()) throw new QueryException("Multiple properties of specified type: " + key);
+            return value;
+        }
     }
 
     /**
@@ -524,7 +536,7 @@ public class TitanGraphTools {
                 if (v instanceof TitanLabel) continue;
                 if (v instanceof TitanType) continue;
 
-                Object state = getSystemProperty(v, SystemKey.VertexState);
+                Object state = getSystemPropertyValue(v, SystemKey.VertexState);
 
                 if (state == null) {
                     if (repair) {
