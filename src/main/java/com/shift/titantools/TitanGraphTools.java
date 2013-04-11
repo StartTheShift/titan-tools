@@ -13,6 +13,8 @@ import com.thinkaurelius.titan.graphdb.database.BackendMutator;
 import com.thinkaurelius.titan.graphdb.database.StandardTitanGraph;
 import com.thinkaurelius.titan.graphdb.database.idhandling.IDHandler;
 import com.thinkaurelius.titan.graphdb.database.idhandling.VariableLong;
+import com.thinkaurelius.titan.graphdb.idmanagement.IDManager;
+import com.thinkaurelius.titan.graphdb.query.AtomicQuery;
 import com.thinkaurelius.titan.graphdb.query.SimpleTitanQuery;
 import com.thinkaurelius.titan.graphdb.transaction.InternalTitanTransaction;
 import com.thinkaurelius.titan.graphdb.types.manager.TypeManager;
@@ -23,10 +25,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 /**
  * Wraps a Titan graph and exposes various utility methods
@@ -41,8 +40,12 @@ public class TitanGraphTools {
     private Method deleteIndexEntryMethod;
     private Method addIndexEntryMethod;
 
+    private Method queryForEntriesMethod;
+    private Method getTypeFromIDMethod;
+
     private Field backendField;
     private Field typeManagerField;
+    private Field idManagerField;
 
     public TitanGraphTools(StandardTitanGraph graph) throws RepairException {
         this.graph = graph;
@@ -79,11 +82,20 @@ public class TitanGraphTools {
             addIndexEntryMethod = graph.getClass().getDeclaredMethod("addIndexEntry", TitanProperty.class, BackendMutator.class);
             addIndexEntryMethod.setAccessible(true);
 
+            queryForEntriesMethod = graph.getClass().getDeclaredMethod("queryForEntries", AtomicQuery.class, StoreTransaction.class);
+            queryForEntriesMethod.setAccessible(true);
+
+            getTypeFromIDMethod = graph.getClass().getDeclaredMethod("getTypeFromID", long.class, InternalTitanTransaction.class);
+            getTypeFromIDMethod.setAccessible(true);
+
             backendField = graph.getClass().getDeclaredField("backend");
             backendField.setAccessible(true);
 
             typeManagerField = graph.getClass().getDeclaredField("etManager");
             typeManagerField.setAccessible(true);
+
+            idManagerField = graph.getClass().getDeclaredField("idManager");
+            idManagerField.setAccessible(true);
 
         } catch (NoSuchFieldException e) {
             throw new RepairException(e);
@@ -182,6 +194,26 @@ public class TitanGraphTools {
 
     }
 
+    public List<Entry> queryForEntries(AtomicQuery query, StoreTransaction txh) throws RepairException {
+        try {
+            return (List<Entry>) queryForEntriesMethod.invoke(graph, query, txh);
+        } catch (IllegalAccessException e) {
+            throw new RepairException(e);
+        } catch (InvocationTargetException e) {
+            throw new RepairException(e);
+        }
+    }
+
+    private final TitanType getTypeFromID(long etid, InternalTitanTransaction tx) throws RepairException {
+        try {
+            return (TitanType) getTypeFromIDMethod.invoke(graph, etid, tx);
+        } catch (IllegalAccessException e) {
+            throw new RepairException(e);
+        } catch (InvocationTargetException e) {
+            throw new RepairException(e);
+        }
+    }
+
     /**
      * Returns the backend instance of the wrapped graph
      *
@@ -191,6 +223,14 @@ public class TitanGraphTools {
     public Backend getBackend() throws RepairException {
         try {
             return (Backend) backendField.get(graph);
+        } catch (IllegalAccessException e) {
+            throw new RepairException(e);
+        }
+    }
+
+    public IDManager getIdManager() throws RepairException {
+        try {
+            return (IDManager) idManagerField.get(graph);
         } catch (IllegalAccessException e) {
             throw new RepairException(e);
         }
@@ -217,13 +257,14 @@ public class TitanGraphTools {
         return bytes;
     }
 
-    public void makeType(String name, Class<?> type, Boolean indexed, Boolean unique) {
+    public TitanKey makeType(String name, Class<?> type, Boolean indexed, Boolean unique) {
         TitanTransaction tx = graph.newTransaction();
         TypeMaker t = tx.makeType().name(name).simple().functional();
         if (unique) t = t.unique();
         if (indexed) t = t.indexed();
-        t.dataType(type).group(TypeGroup.DEFAULT_GROUP).makePropertyKey();
+        TitanKey k = t.dataType(type).group(TypeGroup.DEFAULT_GROUP).makePropertyKey();
         tx.commit();
+        return k;
     }
 
     /**
@@ -255,7 +296,9 @@ public class TitanGraphTools {
         StoreTransaction stx = ((BackendTransaction) itx.getTxHandle()).getStoreTransactionHandle();
 
         //get the key
-        TitanKey titanKey = itx.getPropertyKey(type.getName());
+//        TitanKey titanKey = itx.getPropertyKey(type.getName());
+        TitanKey titanKey = (TitanKey) type;
+        boolean isSystemKey = titanKey.getName().startsWith("#");
 
         if (!titanKey.hasIndex()) {
             throw new RepairException("the given key is not an index");
@@ -292,7 +335,7 @@ public class TitanGraphTools {
                         deletions.add(entry.getColumn());
                         System.out.println("deleted vertex found in index");
                         deletedVertexCount++;
-                    } else {
+                    } else if (!isSystemKey) {
                         //verify that the given property matches
                         Iterator<TitanProperty> properties = v.getProperties(titanKey.getName()).iterator();
                         assert properties.hasNext();
@@ -324,6 +367,8 @@ public class TitanGraphTools {
                     }
                 }
                 keyCount++;
+                if (keyCount % 1000 == 0)
+                    System.out.println(keyCount + " keys inspected");
             }
         } catch (StorageException e) {
             throw new RepairException(e);
@@ -332,6 +377,7 @@ public class TitanGraphTools {
             itx.commit();
         }
 
+        System.out.println("");
         System.out.println("[" + type.getName() + "] " + (repair?"repair":"check") + " completed");
         System.out.println("  > " + keyCount + " keys examined");
         System.out.println("  > " + deletedVertexCount + " references to deleted vertices " + (repair?"removed":"detected"));
@@ -383,6 +429,15 @@ public class TitanGraphTools {
     }
 
     /**
+     * repairs inconsistencies in the type name -> type index
+     *
+     * @throws RepairException
+     */
+    public void repairTypeIndex() throws RepairException {
+        repairType(SystemKey.TypeName, true);
+    }
+
+    /**
      * Detects problems with the index associated with the given type.
      *
      * @param type
@@ -390,6 +445,15 @@ public class TitanGraphTools {
      */
     public void checkType(TitanType type) throws RepairException {
         repairType(type, false);
+    }
+
+    /**
+     * Checks for inconsistencies in the type name -> type index
+     *
+     * @throws RepairException
+     */
+    public void checkTypeIndex() throws RepairException {
+        repairType(SystemKey.TypeName, false);
     }
 
 
@@ -449,6 +513,8 @@ public class TitanGraphTools {
                     addIndexEntry(properties.next(), mutator);
                     count++;
                 }
+                if (count % 1000 == 0)
+                    System.out.println(count + " properties reindexed on type: [" + type.getName() + "]");
             }
             tx.commit();
         } catch (StorageException e) {
@@ -456,6 +522,7 @@ public class TitanGraphTools {
         }
         itx.commit();
 
+        System.out.println("");
         System.out.println(count + " properties reindexed on type: [" + type.getName() + "]");
     }
 
@@ -520,6 +587,10 @@ public class TitanGraphTools {
         //vertices are stored in the edge store
         Backend backend = getBackend();
         KeyColumnValueStore edgeStore = backend.getEdgeStore();
+        Set<Long> removedIndexEntries = new HashSet<Long>();
+
+        Double minCreated = Double.MAX_VALUE;
+        Double maxCreated = Double.MIN_VALUE;
 
         int keyCount = 0;
         int fixCount = 0;
@@ -544,18 +615,64 @@ public class TitanGraphTools {
                         tx.removeVertex(tx.getVertex(v.getID()));
                         tx.commit();
                     }
+                    System.out.println("invalid vertex found: v[" + v.getID() + "]");
                     fixCount++;
+                } else {
+                    //
+                    SimpleTitanQuery sq = new SimpleTitanQuery((InternalTitanVertex) v);
+                    List<Entry> entries = queryForEntries(sq.clone(), stx);
+                    List<ByteBuffer> deletions = new LinkedList<ByteBuffer>();
+                    List<Long> idxDeletions = new LinkedList<Long>();
+                    for (Entry entry: entries) {
+                        ByteBuffer column = entry.getColumn();
+                        int pos = column.position();
+//                        int dirID = IDHandler.getDirectionID(column.get(column.position()));
+                        long etid = IDHandler.readEdgeType(column, getIdManager());
+                        TitanType titanType = getTypeFromID(etid, readOnlyTx);
+                        if (titanType == null) {
+                            column.position(pos);
+                            deletions.add(entry.getColumn());
+                            idxDeletions.add(etid);
+                        }
+                    }
+
+                    if (deletions.size() > 0) {
+                        if (repair) {
+                            InternalTitanTransaction tx = (InternalTitanTransaction) graph.newTransaction();
+                            StoreTransaction storeTx = ((BackendTransaction) tx.getTxHandle()).getStoreTransactionHandle();
+                            getBackend().getEdgeStore().mutate(IDHandler.getKey(v.getID()), null, deletions, storeTx);
+                            stx.commit();
+                            tx.commit();
+                        }
+                        System.out.print("corrupt vertex property found: v[" + v.getID() + "] -> ");
+                        for (Long l: idxDeletions) System.out.print(" " + l);
+                        System.out.print("\n");
+
+                        try {
+                            Double created_at = (Double) v.getProperty("created_at");
+                            if (created_at < minCreated) minCreated = created_at;
+                            if (created_at > maxCreated) maxCreated = created_at;
+                        } catch (Exception e) {
+                            //
+                        }
+                        fixCount++;
+                    }
                 }
                 keyCount++;
+                if (keyCount % 1000 == 0)
+                    System.out.println(keyCount + " vertices inspected");
             }
         } catch (StorageException e) {
             throw new RepairException(e);
         }
         itx.commit();
 
+        System.out.println("");
         System.out.println("partial vertex " + (repair?"repair":"check") + " completed");
         System.out.println("  > " + keyCount + " keys examined");
         System.out.println("  > " + fixCount + " partial vertices " + (repair?"removed":"detected"));
+        System.out.println("  > min timestamp: " + minCreated);
+        System.out.println("  > max timestamp: " + maxCreated);
 
     }
 
